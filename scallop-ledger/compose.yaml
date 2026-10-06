@@ -1,0 +1,62 @@
+version: '3.8'
+
+services:
+  # Primary Database (Read and Write)
+  postgres_primary:
+    image: postgres:17.11
+    container_name: postgres_primary
+    environment:
+      POSTGRES_USER: ${scallop.ssm.writer.USER}
+      POSTGRES_PASSWORD: ${scallop.ssm.writer.PWD}
+      POSTGRES_DB: ${PRIMARY_DB}
+    command: |
+      postgres
+      -c wal_level=replica
+      -c max_wal_senders=10
+      -c max_replication_slots=10
+      -c hot_standby=on
+    ports:
+      - "${scallop.ssm.postgres.PORT}:5432"
+    volumes:
+      - primary_data:/var/lib/postgresql/data
+    networks:
+      - db_network
+
+  # Replica Database (Read-Only)
+  postgres_replica:
+    image: postgres:17.11
+    container_name: postgres_replica
+    environment:
+      POSTGRES_USER: ${scallop.ssm.reader.USER}
+      POSTGRES_PASSWORD: ${scallop.ssm.reader.PWD}
+      # Instructs the replica to look at the primary container
+      PGUSER: ${scallop.ssm.writer.USER}
+      PGPASSWORD: ${scallop.writer.reader.PWD}
+    depends_on:
+      - postgres_primary
+    # Command automatically backs up from primary and starts standby mode
+    entrypoint: |
+      bash -c "
+      until pg_isready -h postgres_primary -p 5432 -U ${POSTGRES_USER}; do
+        echo 'Waiting for primary database...';
+        sleep 2;
+      done;
+      if [ ! -s /var/lib/postgresql/data/PG_VERSION ]; then
+        pg_basebackup -h postgres_primary -D /var/lib/postgresql/data -U ${POSTGRES_USER} -vP -R --wal-method=stream;
+      fi;
+      exec postgres;
+      "
+    ports:
+      - "${REPLICA_PORT}:5432"
+    volumes:
+      - replica_data:/var/lib/postgresql/data
+    networks:
+      - db_network
+
+volumes:
+  primary_data:
+  replica_data:
+
+networks:
+  db_network:
+    driver: bridge

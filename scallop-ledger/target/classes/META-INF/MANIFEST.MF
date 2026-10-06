@@ -1,0 +1,7 @@
+Manifest-Version: 1.0
+Java-Version: 26
+Build-Jdk-Spec: 27
+Implementation-Title: Scallop Frozen Architecture Ledger
+Implementation-Version: 2.6.0
+Created-By: Maven Integration for Eclipse
+

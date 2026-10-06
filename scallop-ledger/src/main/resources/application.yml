@@ -1,0 +1,8 @@
+spring:
+  profiles:
+    active: dev
+  cloud:
+    aws:
+    # Only staging and prod read the database settings from AWS SSM Parameter Store.
+     parameterstore:
+       enabled: false

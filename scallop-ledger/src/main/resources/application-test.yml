@@ -1,0 +1,131 @@
+spring:
+  application:
+    name: scallop-ledger
+
+  jpa:
+    # The schema is owned by Flyway. Hibernate may only check that its entity
+    # mappings agree with the migrated schema - never alter it.
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+
+  jackson:
+    default-property-inclusion: non_null
+    deserialization:
+      fail-on-unknown-properties: true
+    serialization:
+      order-map-entries-by-keys: true
+    parser: 
+      strict-duplicate-detection: true
+
+server:
+  port: ${LEDGER_PORT:8089}
+  error:
+    include-message: never
+    include-stacktrace: never
+  servlet:
+    session:
+      timeout: 20m
+      cookie:
+        http-only: true
+        same-site: strict
+        secure: ${COOKIE_SECURE:true}
+  tomcat:
+    max-http-form-post-size: 16KB
+  max-http-request-header-size: 16KB
+
+springdoc:
+  api-docs:
+    enabled: true
+  swagger-ui:
+    enabled: true
+
+openapi: 
+  info:
+  title: Scallop Ledger API
+  version: 1.0.0
+# 1. Define the authentication scheme
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT # Optional, informational only
+      description: "Enter your JWT token."
+# 2. Apply it globally to all endpoints
+security:
+  - BearerAuth: []
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  health:
+    how-details: when_authorized
+    probes:
+      enabled: true
+    group:
+      readiness:
+        include: db
+
+scallop:
+  # Read/write split (see DataSourceConfig). Locally both pools point at the same
+  # database unless LEDGER_READ_DB_URL is set, so the routing still runs.
+  datasource:
+    reader-fallback-cooldown: ${LEDGER_READ_FALLBACK_COOLDOWN:PT30S}
+    writer:
+      pool-name: ledger-writer
+      jdbc-url: ${LEDGER_DB_URL:jdbc:postgresql://localhost:5432/scllop_ledger_Journal}
+      username: ${LEDGER_DB_USER:postgres}
+      password: ${LEDGER_DB_PASSWORD:postgres}
+      maximum-pool-size: ${DB_POOL_SIZE:10}
+      connection-timeout: 10000
+      transaction-isolation: TRANSACTION_READ_COMMITTED
+    reader:
+      pool-name: ledger-reader
+      jdbc-url: ${LEDGER_READ_DB_URL:${LEDGER_DB_URL:jdbc:postgresql://localhost:5432/scllop_ledger_Journal}}
+      username: ${LEDGER_READ_DB_USER:${LEDGER_DB_USER:postgres}}
+      password: ${LEDGER_READ_DB_PASSWORD:${LEDGER_DB_PASSWORD:postgres}}
+      maximum-pool-size: ${DB_READ_POOL_SIZE:10}
+      read-only: true
+      # Fail fast so the writer fallback kicks in quickly, and let the app start
+      # even when the replica is down.
+      connection-timeout: 2000
+      initialization-fail-timeout: -1
+      transaction-isolation: TRANSACTION_READ_COMMITTED
+
+  security:
+    jwt:
+# HS256 needs at least 256 bits of key material. 
+# This demo default is public knowledge - override FRAUD_JWT_SECRET for anything real.
+      secret: ${JWT_SECRET:FmEqWWbRwHSZsuIUcqfcn8rIlWSWReK1dyiTiYU4KZscCqCxccigw0jycIAY0KfDBAJl0N2NO2oJMbXeL+vu2g==}
+      issuer: ${JWT_ISSUER:scallop-ledger}
+      access-token-ttl: ${JWT_TTL:PT2H}
+      refresh-token-ttl: ${JWT_TTL:PT2H}
+      private-key-location: ${JWT_PRIVATE_KEY_LOCATION:}
+      public-key-location: ${JWT_PUBLIC_KEY_LOCATION:}
+  entity: ${LEDGER_ENTITY:SCALLOP_SL}
+  environment: ${LEDGER_ENVIRONMENT:development}
+  operator-password: ${OPERATOR_PASSWORD:reviewer12345678901234567890}
+  reviewer-password: ${REVIEWER_PASSWORD:reviewer12345678901234567890}
+  viewer-password: ${VIEWER_PASSWORD:reviewer12345678901234567890}
+  # client_secret of the "integration" OAuth2 client outside beta
+  integration-password: ${INTEGRATION_PASSWORD:reviewer12345678901234567890}
+  webhook-secret: ${WEBHOOK_SECRET:665559d85d609d4f6578069bd815bc639318c562cb64043079d3d6986cf86a05}
+  batch-size: ${BATCH_SIZE:100}
+  beta-policy-file: ${BETA_POLICY_FILE:}
+  # Mandatory monitoring; disabling is permitted only in isolated test mode.
+  monitoring:
+    enabled: ${MONITORING_ENABLED:true}
+# Fixed self-hosted Yente /match/dataset endpoint. Empty = REVIEW, never ALLOW.
+    yente-url: ${YENTE_MATCH_URL:}
+    yente-key: ${YENTE_API_KEY:}
